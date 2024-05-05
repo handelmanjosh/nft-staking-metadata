@@ -1,10 +1,18 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, token::{transfer, Mint, Token, TokenAccount, Transfer}};
-
+use anchor_spl::{associated_token::AssociatedToken, metadata::mpl_token_metadata, token::{transfer, Mint, Token, TokenAccount, Transfer}};
 declare_id!("2A8PvxwNyoqdfEQKEGAo9PgByToghe4VJcCfcARAHNrd");
-
+const CREATOR1: &str = "46gN6qwoMbZVCJmvVcFbmpy9NNaanPydmqhFy1PCiBfP";
+const CREATOR2: &str = "3P7mTbbaFtW13H9txNm9KynxEGLke45iPGCdqgJwGx3c";
+const CREATOR3: &str = "BYbFPymSgjC4bxiaDTd9YRxDbcSozUy533Lxy1ozswvZ";
+const CREATOR4: &str = "G67VLHRyiCaRgjFgTADw9fjVRuk7MYz45cwer5fBR31U";
+const CREATOR5: &str = "4frXBts7pABipQofis4LixoYApPh3VLCFQg2QVYAEQJy";
+const CREATOR6: &str = "5PUq4VZSbm5ZwrQMh2bHNLM8ca6UieguKiaLRJqp3d75";
+const CREATOR7: &str = "";
 #[program]
 pub mod nft_staking_metadata {
+
+    use anchor_spl::metadata::mpl_token_metadata::accounts::Metadata;
+
     use super::*;
 
     pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
@@ -36,8 +44,40 @@ pub mod nft_staking_metadata {
                 return Err(CustomError::Unauthorized.into())
             }
         }
-        if ctx.accounts.nft_mint.key() != ctx.accounts.nft_account.mint {
+        let nft_mint_account_pubkey = ctx.accounts.nft_mint.key();
+        let metadata_seed = &[
+            "metadata".as_bytes(),
+            ctx.accounts.token_metadata_program.key.as_ref(),
+            nft_mint_account_pubkey.as_ref()
+        ];
+        let (metadata_derived_key, _bump) = Pubkey::find_program_address(metadata_seed, ctx.accounts.token_metadata_program.key);
+        if  metadata_derived_key != ctx.accounts.nft_metadata_account.key() || ctx.accounts.nft_metadata_account.data_is_empty() {
             return Err(CustomError::IncorrectCollection.into());
+        }
+        let metadata_full_account =  match Metadata::try_from(&ctx.accounts.nft_metadata_account).ok() {
+            None => return Err(CustomError::InvalidAccounts.into()),
+            Some(account) => account
+        };
+        let creators = match metadata_full_account.creators {
+            None => return Err(CustomError::InvalidAccounts.into()),
+            Some(account) => account,
+        };
+        let mut valid = false;
+        for creator in creators {
+            if creator.verified {
+                if creator.address == CREATOR1.parse::<Pubkey>().unwrap() 
+                || creator.address == CREATOR2.parse::<Pubkey>().unwrap()
+                || creator.address == CREATOR3.parse::<Pubkey>().unwrap()
+                || creator.address == CREATOR4.parse::<Pubkey>().unwrap()
+                || creator.address == CREATOR5.parse::<Pubkey>().unwrap()
+                || creator.address == CREATOR6.parse::<Pubkey>().unwrap()
+                || creator.address == CREATOR7.parse::<Pubkey>().unwrap() {
+                    valid = true;
+                }
+            }
+        }
+        if !valid {
+            return Err(CustomError::IncorrectCollection.into())
         }
         match ctx.accounts.stake_account.mints.iter().position(|&x| x == ctx.accounts.nft_account.mint) {
             None => -1,
@@ -307,14 +347,15 @@ pub struct Stake<'info> {
     #[account(
         mut,
         constraint = nft_account.owner == user.key(),
-        constraint = nft_account.amount == 1
+        constraint = nft_account.amount == 1,
+        constraint = nft_account.mint == nft_mint.key(),
     )]
     pub nft_account: Account<'info, TokenAccount>,
     pub nft_mint: Account<'info, Mint>,
     pub nft_metadata_account: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
-    #[account(address = metadata_program_id)]
+    #[account(address = mpl_token_metadata::ID)]
     pub token_metadata_program: AccountInfo<'info>
 }
 
